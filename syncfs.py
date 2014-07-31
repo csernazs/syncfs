@@ -387,6 +387,20 @@ class Directory(object):
                 raise TypeError("Unkown object??? %s" % repr(entry))
             
         return (dirs, files)
+
+    def get_dir(self, name):
+        return self.get_entry(name, Directory)
+    
+    def get_file(self, name):
+        return self.get_entry(name, File)
+    
+    def get_entry(self, name, klass):
+        retval = self.entries.get(name, None)
+        if isintance(retval, klass):
+            return retval
+        else:
+            raise KeyError("No such %s: %s" % (klass.__name__, name))
+    
         
     def walk(self):
         parent = ""
