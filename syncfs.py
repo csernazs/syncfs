@@ -1,3 +1,48 @@
+"""
+
+So, here's the idea.
+
+We have a repository of a filesystem stored somewhere.
+The repository contains the following:
+- the files with their checksum (SHA1, for example).
+  Files are split into chunks and each chunk's checksum is computed. So if
+  there are common parts of the files, they will have the same checksum so
+  the content needs to be stored only once.
+
+- the directory tree, where file objects are pointing to the files.
+
+
+
+The client may requests one of the following:
+- directory metadata. In this case it will receive some part of the
+  directory tree. It will contain the POSIX attributes, the filenames, etc.
+
+- bitmap of a specified file. The bitmap is a series of checksums for the
+  chunks in the file.
+  
+- the chunk itself. The chunk is identified by its checksum.
+
+
+So the client can re-construct both the directory structure and the files.
+
+Also, and here comes the main point, the client may store both the metadata
+and the bitmap (and the chunks) on the disk, locally.
+
+So when a 3rd party makes some change on the filesystem, the server notifies
+all the clients which are interested in this change (eg which cached those
+data locally), so the clients can invalidate these objects.
+
+The client may decide to keep the file content - this may be useful in the
+future if the file content is reverted - or to remove the content as well.
+But the main point is that if the user needs the invalidated file again, it
+downloads it again.
+
+
+If the change is initiated from the client, it notifies the server about the
+invalidation, pretty like the same was as the server does for the client.
+
+"""
+
 
 import pdb
 
@@ -11,6 +56,11 @@ import collections
 pjoin = os.path.join
 
 def read_buffer(file, maxsize):
+    """
+    Reads maxsize sized buffers from the file.
+    Yields the buffers.
+    
+    """
     buff = None
     while True:
         buff = file.read(maxsize)
@@ -20,6 +70,14 @@ def read_buffer(file, maxsize):
             yield buff
 
 class Bitmap(list):
+    """
+    Represents one bitmap for a given file.
+    
+    Abstract class, needs to be inherited.
+    
+    Represents checksum in its binary form (not hex), inherits from list.
+    
+    """
     def __init__(self):
         super(Bitmap, self).__init__()
         self.chunk_size = None
@@ -36,10 +94,20 @@ class Bitmap(list):
 
 
 class SHA1Bitmap(Bitmap):
+    """
+    Specifies sha1 as an algorithm for the bitmap.
+    
+    """
     alg = hashlib.sha1
         
 
 class Store(object):
+    """
+    
+    Implements bitmap + content store.
+    Stores bitmaps and chunks.
+    
+    """
     def __init__(self, output_dir, bitmap_class=SHA1Bitmap):
         self.output_dir = output_dir
         self.bitmap_class = bitmap_class
@@ -99,10 +167,18 @@ class Store(object):
             
     def read_chunk(self, digest):
         path = self.get_chunk_path(digest, False)
+        # FIXME - the whole chunk?
         return open(path, "rb").read()
 
         
 class Struct(object):
+    """
+    Implements a general struct object.
+    
+    Very similar to named tuples, but it's more flexible.
+    
+    """
+
     params = ()
     def __init__(self, *args, **kwargs):
         for idx, kv in enumerate(self.params):
@@ -163,6 +239,11 @@ class Struct(object):
 
 
 class FileMeta(Struct):
+    """
+    Stores meta information about a file.
+    Note the "chunk_size" which contains the size of the chunk in bytes.
+    
+    """
     params = ("name",
               "mode",
               "owner",
@@ -175,8 +256,11 @@ class FileMeta(Struct):
     
 
 class File(object):
+    """
+    Represents a single file in the filesystem.
+    
+    """
     def __init__(self, meta=None, bitmap=None):
-            
         if meta is None:
             self.meta = FileMeta()
         elif not isinstance(meta, FileMeta):
@@ -187,6 +271,7 @@ class File(object):
         if bitmap:
             self.bitmap = bitmap
         else:
+            # FIXME - use bitmap class instead?
             self.bitmap = []
     
         
@@ -236,9 +321,16 @@ class File(object):
         
 
 class Directory(object):
+    """
+    Represents a directory in the filesystem.
+    
+    Contains the entries (File or Directory objects), which can be queried.
+    Entries are stored in a dict, hashed by their key to make faster lookups.
+    
+    """
     def __init__(self, name=None, entries=None, parent=None):
         self.name = name
-        self.parent = parent
+        self.parent = parent # this one is currently unused
 
         if entries is None:
             self.entries = {}
@@ -278,6 +370,12 @@ class Directory(object):
         return len(self.entries)
         
     def get_dirs_files(self):
+        """
+        Returns the directories and files in a 2-element tuple.
+        First element contains the directories as a list, the other contains the files as list.
+        
+        Note: objects are references to the directory structure, be careful when changing their name.
+        """
         dirs = []
         files = []
         for entry in self.entries.values():
@@ -307,9 +405,14 @@ class Directory(object):
                 queue.append(root)
                 queue.extend(dirs)
             
-        
 
 def scan(dir, store, ignore=None):
+    """
+    Adds a directory structure from the filesystem to the store, which
+    must be created separately.
+    
+    Returns the root directory object.
+    """
     if not os.path.isabs(dir) or not os.path.isdir(dir):
         raise ValueError("dir must be absolute path and directory")
 
