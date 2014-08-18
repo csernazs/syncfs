@@ -103,6 +103,10 @@ class Struct(object):
 
     def keys(self):
         return self.params
+
+    @classmethod
+    def from_dict(cls, dict):
+        return cls(**dict)
         
     def as_dict(self):
         return {k:getattr(self, k) for k in self.params}
@@ -117,10 +121,7 @@ class Struct(object):
                 return cmp(self.as_dict(), other.as_dict())
             else:
                 return NotImplemented            
-
-
-
-
+    
 
 class FileMeta(Struct):
     """
@@ -137,7 +138,7 @@ class FileMeta(Struct):
               "atime",
               "size",
               "chunk_size")
-    
+
 
 class File(object):
     """
@@ -157,7 +158,8 @@ class File(object):
         else:
             # FIXME - use bitmap class instead?
             self.bitmap = []
-    
+
+        self.parent = None
         
     @classmethod
     def from_dict(cls, kwargs):
@@ -202,6 +204,26 @@ class File(object):
     
     name = property(get_name, set_name)
                 
+
+    def dump(self):
+        retval = {}
+        
+        retval["meta"] = self.meta.as_dict() # copy
+        retval["bitmap"] = list(self.bitmap) # copy
+
+        retval["bitmap_type"] = self.bitmap.type # FIXME (default?)
+
+        return retval
+                
+    @classmethod
+    def load(cls, data):
+        meta = FileMeta.from_dict(data["meta"])
+        bitmap_cls = get_bitmap(data["bitmap_type"])
+        bitmap = bitmap_cls(data["bitmap"])
+        
+        retval = cls(meta, bitmap)
+        return retval
+        
         
 
 class Directory(object):
@@ -229,7 +251,12 @@ class Directory(object):
         if file.name in self.entries:
             raise KeyError("File already exists: %r" % file.name)
         
+        if file.parent is not None:
+            raise ValueError("%s already belongs to a directory" % file.__class__.__name__)
+
+        
         self.entries[file.name] = file
+        file.parent = self
         
     def remove(self, file):
         if isinstance(file, (File, Directory)):
@@ -249,6 +276,7 @@ class Directory(object):
         
             
         del self.entries[file.name]
+        file.parent = None
         
     def __len__(self):
         return len(self.entries)
