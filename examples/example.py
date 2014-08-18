@@ -1,5 +1,14 @@
 #!/usr/bin/env python
 
+import os
+import sys
+
+script_path = os.path.realpath(sys.argv[0])
+script_dir = os.path.dirname(script_path)
+lib_dir = os.path.join(os.path.dirname(script_dir), "lib")
+
+sys.path.append(lib_dir)
+
 import syncfs
 import os
 pjoin=os.path.join
@@ -7,7 +16,7 @@ pjoin=os.path.join
 def main():
     store = syncfs.Store("/tmp/content")
     
-    base_dir = "/home/zsolt/devel/python"
+    base_dir = sys.argv[1]
     dir = syncfs.scan(base_dir, store, ignore=set([".git"]))
     print dir
 
