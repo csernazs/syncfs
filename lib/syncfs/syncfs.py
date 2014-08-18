@@ -43,6 +43,7 @@ invalidation, pretty like the same was as the server does for the client.
 
 """
 
+__all__ = ["Bitmap", "SHA1Bitmap", "Store", "Struct", "FileMeta", "File", "Directory", "scan"]
 
 import pdb
 
